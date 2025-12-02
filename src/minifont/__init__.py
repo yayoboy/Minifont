@@ -8,6 +8,7 @@ from .rasterizer import FontRasterizer
 from .exporters import CHeaderExporter, XBMExporter, BDFExporter, PythonExporter
 from .google_fonts import GoogleFontsDownloader
 from .icon_fonts import IconFontRegistry, MaterialIcons, FontAwesome
+from .font_discovery import FontDiscovery, FontInfo
 
 __all__ = [
     "FontLoader",
@@ -20,4 +21,6 @@ __all__ = [
     "IconFontRegistry",
     "MaterialIcons",
     "FontAwesome",
+    "FontDiscovery",
+    "FontInfo",
 ]

@@ -5,6 +5,7 @@ A Python CLI tool to convert TTF/OTF/Webfont fonts to 1-bit bitmaps for Arduino 
 ## Features
 
 - 🔤 Support for TTF, OTF, and WOFF/WOFF2 fonts
+- 📂 **Font discovery** - Automatically find and list fonts in current directory
 - 🌐 **Google Fonts integration** - Download fonts directly from Google Fonts
 - 🎯 **Icon fonts support** - Material Icons and Font Awesome with preset collections
 - 📊 Multiple export formats:
@@ -14,7 +15,7 @@ A Python CLI tool to convert TTF/OTF/Webfont fonts to 1-bit bitmaps for Arduino 
   - Python byte arrays (MicroPython)
 - 🎨 Customizable character sets (ASCII, extended, Unicode ranges)
 - 📐 Multiple font sizes (8, 12, 16, 24 px and custom)
-- 🖥️ Interactive CLI interface
+- 🖥️ Interactive CLI interface with auto-discovery
 - ⚡ Batch processing mode
 
 ## Installation
@@ -45,8 +46,18 @@ minifont --font myfont.ttf --size 16 --charset ascii --format c-header --output 
 
 ## Usage Examples
 
+### List fonts in current directory
+```bash
+# List all fonts in current directory
+minifont --list-fonts
+
+# List fonts in specific directory
+minifont --list-fonts --directory /path/to/fonts
+```
+
 ### Convert a TTF font to C header
 ```bash
+# Using font from current directory
 minifont --font Arial.ttf --size 16 --charset ascii --format c-header --output arial16.h
 ```
 

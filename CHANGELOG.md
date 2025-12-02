@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.0] - 2024-12-02
 
 ### Added
+- **Font Discovery**: Automatically discover and list fonts in directories
+  - `--list-fonts` option to show fonts in current directory
+  - `--directory` option to specify search directory
+  - Interactive mode auto-discovers fonts and suggests them
+  - Group fonts by family when displaying many fonts
+  - Find fonts by name or number in interactive mode
+  - `FontDiscovery` module for programmatic font discovery
 - **Google Fonts Integration**: Download fonts directly from Google Fonts API
   - `--google-font` option to download fonts by name
   - `--google-variant` option to select font variants (regular, bold, italic, etc.)

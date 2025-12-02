@@ -22,6 +22,7 @@ from .icon_fonts import (
     ICON_PRESETS,
     get_icon_preset
 )
+from .font_discovery import FontDiscovery
 
 
 EXPORT_FORMATS = {
@@ -126,6 +127,17 @@ def print_info(message: str) -> None:
     is_flag=True,
     help='List available icon presets'
 )
+@click.option(
+    '--list-fonts',
+    is_flag=True,
+    help='List font files in current directory'
+)
+@click.option(
+    '--directory', '-d',
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default='.',
+    help='Directory to search for fonts (default: current directory)'
+)
 @click.version_option(version='0.2.0', prog_name='minifont')
 def main(
     font: Optional[Path],
@@ -141,7 +153,9 @@ def main(
     list_presets: bool,
     list_google_fonts: bool,
     list_icon_fonts: bool,
-    list_icon_presets: bool
+    list_icon_presets: bool,
+    list_fonts: bool,
+    directory: Path
 ):
     """Minifont - Convert fonts to 1-bit bitmaps for Arduino and embedded projects.
 
@@ -176,9 +190,35 @@ def main(
         print("\nUse: minifont --icon-font material --icons navigation ...")
         return
 
+    if list_fonts:
+        # List fonts in directory
+        print_info(f"Searching for fonts in: {directory.resolve()}")
+        fonts = FontDiscovery.find_fonts_in_directory(str(directory))
+
+        if not fonts:
+            print_warning(f"No font files found in {directory}")
+            print_info("Supported formats: TTF, OTF, WOFF, WOFF2")
+            return
+
+        print_success(f"Found {len(fonts)} font(s):\n")
+
+        # Group by family if there are many fonts
+        if len(fonts) > 10:
+            families = FontDiscovery.group_fonts_by_family(fonts)
+            for family_name, family_fonts in sorted(families.items()):
+                print(f"  📁 {family_name}")
+                for font in family_fonts:
+                    print(f"     • {font.filename} ({font.format}, {font.size_kb:.1f} KB)")
+        else:
+            for i, font in enumerate(fonts, 1):
+                print(f"  {i}. {font}")
+
+        print(f"\nUse: minifont --font <filename> ...")
+        return
+
     # Interactive mode if no arguments provided
     if not font and not google_font and not icon_font:
-        interactive_mode()
+        interactive_mode(directory)
         return
 
     # Determine font source
@@ -236,20 +276,75 @@ def main(
             sys.exit(1)
 
 
-def interactive_mode():
-    """Run in interactive mode with prompts."""
+def interactive_mode(directory: Path = Path('.')):
+    """Run in interactive mode with prompts.
+
+    Args:
+        directory: Directory to search for fonts
+    """
     click.echo()
     click.secho("╔═══════════════════════════════════════╗", fg='cyan')
-    click.secho("║         Minifont v0.1.0              ║", fg='cyan', bold=True)
+    click.secho("║         Minifont v0.2.0              ║", fg='cyan', bold=True)
     click.secho("║  Font to Bitmap Converter for Arduino║", fg='cyan')
     click.secho("╚═══════════════════════════════════════╝", fg='cyan')
     click.echo()
 
-    # Step 1: Select font file
-    font_path = click.prompt(
-        click.style("Font file path", fg='yellow'),
-        type=click.Path(exists=True, dir_okay=False, path_type=Path)
-    )
+    # Discover fonts in current directory
+    print_info(f"Searching for fonts in: {directory.resolve()}")
+    discovered_fonts = FontDiscovery.find_fonts_in_directory(str(directory))
+
+    if discovered_fonts:
+        print_success(f"Found {len(discovered_fonts)} font(s) in current directory:\n")
+        for i, font in enumerate(discovered_fonts[:10], 1):
+            print(f"  {i}. {font.filename} - {font.font_name}")
+
+        if len(discovered_fonts) > 10:
+            print(f"  ... and {len(discovered_fonts) - 10} more")
+
+        click.echo()
+
+        # Ask if user wants to use a discovered font
+        use_discovered = click.confirm(
+            click.style("Use a font from current directory?", fg='yellow'),
+            default=True
+        )
+
+        if use_discovered:
+            # Let user select by number or name
+            selection = click.prompt(
+                click.style("Enter font number or filename", fg='yellow'),
+                type=str
+            )
+
+            # Try to parse as number
+            try:
+                idx = int(selection) - 1
+                if 0 <= idx < len(discovered_fonts):
+                    font_path = discovered_fonts[idx].path
+                else:
+                    print_error(f"Invalid number. Must be between 1 and {len(discovered_fonts)}")
+                    return
+            except ValueError:
+                # Try to find by filename
+                font_path = FontDiscovery.get_font_by_name(selection, str(directory))
+                if not font_path:
+                    print_error(f"Font not found: {selection}")
+                    return
+        else:
+            # Ask for font file path
+            font_path = click.prompt(
+                click.style("Font file path", fg='yellow'),
+                type=click.Path(exists=True, dir_okay=False, path_type=Path)
+            )
+    else:
+        print_warning("No fonts found in current directory")
+        click.echo()
+
+        # Step 1: Select font file
+        font_path = click.prompt(
+            click.style("Font file path", fg='yellow'),
+            type=click.Path(exists=True, dir_okay=False, path_type=Path)
+        )
 
     # Step 2: Select font size
     font_size = click.prompt(
