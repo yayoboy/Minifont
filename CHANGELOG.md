@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.0] - 2024-12-02
 
 ### Added
+- **Enhanced Terminal UI**: Beautiful, professional CLI interface with Rich and Questionary
+  - Rich tables for font listings with color-coded formats
+  - Scrollable selection menus with arrow key navigation
+  - Progress spinners for long operations
+  - Syntax-highlighted code previews
+  - Beautiful glyph bitmap previews with panels
+  - Side-by-side comparison views
+  - Formatted conversion summaries
+  - Color-coded messages (info, success, warning, error)
 - **Font Discovery**: Automatically discover and list fonts in directories
   - `--list-fonts` option to show fonts in current directory
   - `--directory` option to specify search directory
@@ -43,6 +52,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Dependencies
 - Added: requests>=2.31.0
+- Added: rich>=13.7.0 (beautiful terminal formatting)
+- Added: questionary>=2.0.0 (interactive selection menus)
 
 ## [0.1.0] - 2024-12-02
 

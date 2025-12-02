@@ -9,6 +9,7 @@ from .exporters import CHeaderExporter, XBMExporter, BDFExporter, PythonExporter
 from .google_fonts import GoogleFontsDownloader
 from .icon_fonts import IconFontRegistry, MaterialIcons, FontAwesome
 from .font_discovery import FontDiscovery, FontInfo
+from . import ui
 
 __all__ = [
     "FontLoader",
@@ -23,4 +24,5 @@ __all__ = [
     "FontAwesome",
     "FontDiscovery",
     "FontInfo",
+    "ui",
 ]

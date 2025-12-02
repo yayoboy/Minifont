@@ -2,6 +2,7 @@
 
 import sys
 import click
+import questionary
 from pathlib import Path
 from typing import Optional
 
@@ -23,6 +24,7 @@ from .icon_fonts import (
     get_icon_preset
 )
 from .font_discovery import FontDiscovery
+from . import ui
 
 
 EXPORT_FORMATS = {
@@ -35,22 +37,22 @@ EXPORT_FORMATS = {
 
 def print_success(message: str) -> None:
     """Print success message in green."""
-    click.secho(f"✓ {message}", fg='green')
+    ui.show_success(message)
 
 
 def print_error(message: str) -> None:
     """Print error message in red."""
-    click.secho(f"✗ {message}", fg='red', err=True)
+    ui.show_error(message)
 
 
 def print_warning(message: str) -> None:
     """Print warning message in yellow."""
-    click.secho(f"⚠ {message}", fg='yellow')
+    ui.show_warning(message)
 
 
 def print_info(message: str) -> None:
     """Print info message in cyan."""
-    click.secho(f"ℹ {message}", fg='cyan')
+    ui.show_info(message)
 
 
 @click.command()
@@ -191,7 +193,7 @@ def main(
         return
 
     if list_fonts:
-        # List fonts in directory
+        # List fonts in directory with Rich table
         print_info(f"Searching for fonts in: {directory.resolve()}")
         fonts = FontDiscovery.find_fonts_in_directory(str(directory))
 
@@ -200,20 +202,14 @@ def main(
             print_info("Supported formats: TTF, OTF, WOFF, WOFF2")
             return
 
-        print_success(f"Found {len(fonts)} font(s):\n")
-
         # Group by family if there are many fonts
         if len(fonts) > 10:
             families = FontDiscovery.group_fonts_by_family(fonts)
-            for family_name, family_fonts in sorted(families.items()):
-                print(f"  📁 {family_name}")
-                for font in family_fonts:
-                    print(f"     • {font.filename} ({font.format}, {font.size_kb:.1f} KB)")
+            ui.show_fonts_grouped(fonts, families)
         else:
-            for i, font in enumerate(fonts, 1):
-                print(f"  {i}. {font}")
+            ui.show_fonts_table(fonts, f"Fonts in {directory.name if directory.name != '.' else 'Current Directory'}")
 
-        print(f"\nUse: minifont --font <filename> ...")
+        ui.console.print("[dim]Use: minifont --font <filename> ...[/dim]\n")
         return
 
     # Interactive mode if no arguments provided
@@ -282,121 +278,157 @@ def interactive_mode(directory: Path = Path('.')):
     Args:
         directory: Directory to search for fonts
     """
-    click.echo()
-    click.secho("╔═══════════════════════════════════════╗", fg='cyan')
-    click.secho("║         Minifont v0.2.0              ║", fg='cyan', bold=True)
-    click.secho("║  Font to Bitmap Converter for Arduino║", fg='cyan')
-    click.secho("╚═══════════════════════════════════════╝", fg='cyan')
-    click.echo()
+    ui.console.print()
+    ui.print_header()
 
     # Discover fonts in current directory
     print_info(f"Searching for fonts in: {directory.resolve()}")
-    discovered_fonts = FontDiscovery.find_fonts_in_directory(str(directory))
+
+    with ui.show_progress_spinner("Scanning directory...") as progress:
+        task = progress.add_task("Scanning", total=None)
+        discovered_fonts = FontDiscovery.find_fonts_in_directory(str(directory))
+        progress.stop()
 
     if discovered_fonts:
-        print_success(f"Found {len(discovered_fonts)} font(s) in current directory:\n")
-        for i, font in enumerate(discovered_fonts[:10], 1):
-            print(f"  {i}. {font.filename} - {font.font_name}")
+        # Show fonts in a beautiful table
+        ui.show_fonts_table(discovered_fonts[:20], "Found Fonts")
 
-        if len(discovered_fonts) > 10:
-            print(f"  ... and {len(discovered_fonts) - 10} more")
+        if len(discovered_fonts) > 20:
+            ui.console.print(f"[dim]... and {len(discovered_fonts) - 20} more fonts[/dim]\n")
 
-        click.echo()
-
-        # Ask if user wants to use a discovered font
-        use_discovered = click.confirm(
-            click.style("Use a font from current directory?", fg='yellow'),
+        # Use questionary for better selection UI
+        use_discovered = questionary.confirm(
+            "Use a font from current directory?",
             default=True
-        )
+        ).ask()
 
         if use_discovered:
-            # Let user select by number or name
-            selection = click.prompt(
-                click.style("Enter font number or filename", fg='yellow'),
-                type=str
-            )
+            # Create choices for questionary
+            choices = [
+                questionary.Choice(
+                    title=f"{i}. {font.filename} - {font.font_name}",
+                    value=font.path
+                )
+                for i, font in enumerate(discovered_fonts, 1)
+            ]
 
-            # Try to parse as number
-            try:
-                idx = int(selection) - 1
-                if 0 <= idx < len(discovered_fonts):
-                    font_path = discovered_fonts[idx].path
-                else:
-                    print_error(f"Invalid number. Must be between 1 and {len(discovered_fonts)}")
-                    return
-            except ValueError:
-                # Try to find by filename
-                font_path = FontDiscovery.get_font_by_name(selection, str(directory))
-                if not font_path:
-                    print_error(f"Font not found: {selection}")
-                    return
+            font_path = questionary.select(
+                "Select a font:",
+                choices=choices[:20]  # Limit to 20 for scrolling
+            ).ask()
+
+            if not font_path:
+                print_error("No font selected")
+                return
         else:
             # Ask for font file path
-            font_path = click.prompt(
-                click.style("Font file path", fg='yellow'),
-                type=click.Path(exists=True, dir_okay=False, path_type=Path)
-            )
+            font_path_str = questionary.path(
+                "Font file path:",
+                only_directories=False
+            ).ask()
+
+            if not font_path_str:
+                print_error("No font path provided")
+                return
+
+            font_path = Path(font_path_str)
     else:
         print_warning("No fonts found in current directory")
-        click.echo()
+        ui.console.print()
 
-        # Step 1: Select font file
-        font_path = click.prompt(
-            click.style("Font file path", fg='yellow'),
-            type=click.Path(exists=True, dir_okay=False, path_type=Path)
-        )
+        # Ask for font file path
+        font_path_str = questionary.path(
+            "Font file path:",
+            only_directories=False
+        ).ask()
+
+        if not font_path_str:
+            print_error("No font path provided")
+            return
+
+        font_path = Path(font_path_str)
 
     # Step 2: Select font size
-    font_size = click.prompt(
-        click.style("Font size in pixels", fg='yellow'),
-        type=int,
+    ui.console.print()
+    font_size = questionary.select(
+        "Select font size:",
+        choices=[
+            questionary.Choice("8 px", 8),
+            questionary.Choice("12 px", 12),
+            questionary.Choice("14 px", 14),
+            questionary.Choice("16 px (recommended)", 16),
+            questionary.Choice("20 px", 20),
+            questionary.Choice("24 px", 24),
+            questionary.Choice("32 px", 32),
+            questionary.Choice("Custom size", "custom"),
+        ],
         default=16
-    )
+    ).ask()
+
+    if font_size == "custom":
+        font_size = questionary.text(
+            "Enter custom font size in pixels:",
+            validate=lambda x: x.isdigit() and int(x) > 0
+        ).ask()
+        font_size = int(font_size)
 
     # Step 3: Select character set
-    click.echo()
-    print_info("Character set presets:")
-    for preset in Charset.get_all_presets():
-        print(f"  • {preset}")
-    click.echo("  • custom (define your own range)")
+    ui.console.print()
+    charset_choices = [
+        questionary.Choice(f"ascii - Basic ASCII (32-126)", "ascii"),
+        questionary.Choice(f"extended - Extended ASCII (32-255)", "extended"),
+        questionary.Choice(f"digits - Numbers 0-9", "digits"),
+        questionary.Choice(f"uppercase - A-Z", "uppercase"),
+        questionary.Choice(f"lowercase - a-z", "lowercase"),
+        questionary.Choice(f"custom - Define your own range", "custom"),
+    ]
 
-    charset_input = click.prompt(
-        click.style("Character set (preset name or range like '32-126')", fg='yellow'),
-        type=str,
-        default='ascii'
-    )
+    charset_input = questionary.select(
+        "Select character set:",
+        choices=charset_choices,
+        default="ascii"
+    ).ask()
+
+    if charset_input == "custom":
+        charset_input = questionary.text(
+            "Enter character range (e.g., '32-126,160-255'):",
+            validate=lambda x: len(x) > 0
+        ).ask()
 
     # Step 4: Select output format
-    click.echo()
-    print_info("Available export formats:")
-    for fmt, (ext, _) in EXPORT_FORMATS.items():
-        print(f"  • {fmt} ({ext})")
+    ui.console.print()
+    format_choices = [
+        questionary.Choice(f"c-header - C array (Adafruit GFX)", "c-header"),
+        questionary.Choice(f"xbm - X BitMap (U8g2)", "xbm"),
+        questionary.Choice(f"bdf - Bitmap Distribution Format", "bdf"),
+        questionary.Choice(f"python - Python arrays (MicroPython)", "python"),
+    ]
 
-    output_format = click.prompt(
-        click.style("Export format", fg='yellow'),
-        type=click.Choice(list(EXPORT_FORMATS.keys()), case_sensitive=False),
-        default='c-header'
-    )
+    output_format = questionary.select(
+        "Select export format:",
+        choices=format_choices,
+        default="c-header"
+    ).ask()
 
     # Step 5: Output file path
     default_ext = EXPORT_FORMATS[output_format][0]
     default_output = f"font_output{default_ext}"
 
-    output_path = click.prompt(
-        click.style("Output file path", fg='yellow'),
-        type=click.Path(path_type=Path),
+    output_path_str = questionary.text(
+        "Output file path:",
         default=default_output
-    )
+    ).ask()
+
+    output_path = Path(output_path_str)
 
     # Step 6: Preview option
-    preview = click.confirm(
-        click.style("Show preview of generated bitmaps?", fg='yellow'),
-        default=False
-    )
+    preview = questionary.confirm(
+        "Show preview of generated bitmaps?",
+        default=True
+    ).ask()
 
-    click.echo()
-    click.secho("Processing...", fg='cyan', bold=True)
-    click.echo()
+    ui.console.print()
+    ui.console.print("[bold cyan]Processing...[/bold cyan]\n")
 
     try:
         process_font(font_path, font_size, charset_input, output_format, output_path, preview)
@@ -441,10 +473,12 @@ def process_font(
     if missing_chars:
         print_warning(f"{len(missing_chars)} characters not available in font")
 
-    # Rasterize glyphs
-    print_info(f"Rasterizing glyphs at {size}px...")
-    rasterizer = FontRasterizer(str(font_path), size)
-    glyphs = rasterizer.rasterize_charset(available_chars)
+    # Rasterize glyphs with progress
+    with ui.show_progress_spinner(f"Rasterizing glyphs at {size}px...") as progress:
+        task = progress.add_task("Rasterizing", total=None)
+        rasterizer = FontRasterizer(str(font_path), size)
+        glyphs = rasterizer.rasterize_charset(available_chars)
+        progress.stop()
 
     if not glyphs:
         raise RasterizerError("No glyphs could be rasterized")
@@ -453,13 +487,8 @@ def process_font(
 
     # Show preview if requested
     if preview:
-        click.echo()
-        print_info("Bitmap preview (first 3 characters):")
-        click.echo()
-        for glyph in glyphs[:3]:
-            preview_text = rasterizer.preview_glyph(glyph)
-            click.echo(preview_text)
-            click.echo()
+        ui.console.print()
+        ui.show_glyphs_comparison(glyphs, max_glyphs=3)
 
     # Export
     if output_path is None:
@@ -474,12 +503,16 @@ def process_font(
 
     print_success(f"Export complete: {output_path}")
 
-    # Show file info
+    # Show conversion summary
     file_size = output_path.stat().st_size
-    print_info(f"File size: {file_size} bytes")
-
-    click.echo()
-    click.secho("✓ Done!", fg='green', bold=True)
+    ui.show_conversion_summary(
+        font_name=font_name,
+        char_count=len(char_codes),
+        glyph_count=len(glyphs),
+        output_file=str(output_path),
+        file_size=file_size,
+        format_type=output_format
+    )
 
 
 def process_icon_font(
