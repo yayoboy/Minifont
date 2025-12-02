@@ -16,6 +16,7 @@ class GlyphBitmap:
     offset_x: int
     offset_y: int
     bitmap: bytes  # 1-bit bitmap data
+    pitch: int  # Bytes per row (may include padding)
 
     @property
     def char(self) -> str:
@@ -91,11 +92,12 @@ class FontRasterizer:
                     advance_x=self.face.glyph.advance.x >> 6,  # Convert from 26.6 fixed point
                     offset_x=0,
                     offset_y=0,
-                    bitmap=b''
+                    bitmap=b'',
+                    pitch=0
                 )
 
             # Convert 8bpp grayscale to 1bpp
-            bitmap_data = self._convert_to_1bit(bitmap)
+            bitmap_data, pitch = self._convert_to_1bit(bitmap)
 
             return GlyphBitmap(
                 char_code=char_code,
@@ -104,28 +106,32 @@ class FontRasterizer:
                 advance_x=self.face.glyph.advance.x >> 6,
                 offset_x=self.face.glyph.bitmap_left,
                 offset_y=self.face.glyph.bitmap_top,
-                bitmap=bitmap_data
+                bitmap=bitmap_data,
+                pitch=pitch
             )
 
         except Exception as e:
             # Some characters might not be available in the font
             return None
 
-    def _convert_to_1bit(self, bitmap: freetype.Bitmap) -> bytes:
+    def _convert_to_1bit(self, bitmap: freetype.Bitmap) -> Tuple[bytes, int]:
         """Convert FreeType bitmap to 1-bit format.
 
         Args:
             bitmap: FreeType bitmap object
 
         Returns:
-            1-bit bitmap data as bytes
+            Tuple of (1-bit bitmap data as bytes, pitch in bytes)
         """
         if bitmap.pixel_mode == freetype.FT_PIXEL_MODE_MONO:
             # Already 1-bit, just copy the data
-            return bytes(bitmap.buffer)
+            # For MONO mode, pitch is already in bytes
+            return bytes(bitmap.buffer), bitmap.pitch
 
         # Convert grayscale to 1-bit
         # Threshold at 128 (middle gray)
+        # Calculate bytes per row (same as FreeType would use)
+        bytes_per_row = (bitmap.width + 7) // 8
         result = []
         threshold = 128
 
@@ -143,7 +149,7 @@ class FontRasterizer:
                     result.append(row_bits)
                     row_bits = 0
 
-        return bytes(result)
+        return bytes(result), bytes_per_row
 
     def rasterize_charset(self, char_codes: set[int]) -> List[GlyphBitmap]:
         """Rasterize multiple characters.
@@ -215,8 +221,7 @@ class FontRasterizer:
                     row += empty
 
             lines.append(row)
-            # Move to next row in bitmap
-            bytes_per_row = (glyph.width + 7) // 8
-            byte_index += bytes_per_row
+            # Move to next row in bitmap using pitch
+            byte_index += glyph.pitch
 
         return '\n'.join(lines)

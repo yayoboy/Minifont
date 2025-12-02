@@ -82,7 +82,8 @@ def demo_glyph_preview():
                 0b11111111, 0b10000001, 0b10000001, 0b11111111,
                 0b10000001, 0b10000001, 0b10000001, 0b10000001,
                 0b00000000, 0b00000000, 0b00000000, 0b00000000
-            ])
+            ]),
+            pitch=1  # 1 byte per row for 8-pixel width
         ),
         GlyphBitmap(
             char_code=66,  # 'B'
@@ -95,7 +96,8 @@ def demo_glyph_preview():
                 0b11111110, 0b10000010, 0b10000010, 0b11111110,
                 0b10000010, 0b10000010, 0b10000010, 0b11111110,
                 0b00000000, 0b00000000, 0b00000000, 0b00000000
-            ])
+            ]),
+            pitch=1  # 1 byte per row for 8-pixel width
         ),
     ]
 

@@ -235,9 +235,12 @@ class BDFExporter(BaseExporter):
             if glyph.width == 0 or glyph.height == 0:
                 lines.append("00")
             else:
+                # Use pitch from glyph for correct row alignment
                 bytes_per_row = (glyph.width + 7) // 8
                 for row in range(glyph.height):
-                    row_bytes = glyph.bitmap[row * bytes_per_row:(row + 1) * bytes_per_row]
+                    # Use pitch to calculate row offset, but only export bytes_per_row bytes
+                    row_offset = row * glyph.pitch
+                    row_bytes = glyph.bitmap[row_offset:row_offset + bytes_per_row]
                     hex_str = ''.join(f"{b:02X}" for b in row_bytes)
                     lines.append(hex_str or "00")
 

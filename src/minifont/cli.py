@@ -25,6 +25,7 @@ from .icon_fonts import (
 )
 from .font_discovery import FontDiscovery
 from . import ui
+from .tui import run_tui
 
 
 EXPORT_FORMATS = {
@@ -140,6 +141,11 @@ def print_info(message: str) -> None:
     default='.',
     help='Directory to search for fonts (default: current directory)'
 )
+@click.option(
+    '--no-tui',
+    is_flag=True,
+    help='Disable TUI and use wizard mode'
+)
 @click.version_option(version='0.2.0', prog_name='minifont')
 def main(
     font: Optional[Path],
@@ -157,7 +163,8 @@ def main(
     list_icon_fonts: bool,
     list_icon_presets: bool,
     list_fonts: bool,
-    directory: Path
+    directory: Path,
+    no_tui: bool
 ):
     """Minifont - Convert fonts to 1-bit bitmaps for Arduino and embedded projects.
 
@@ -214,7 +221,12 @@ def main(
 
     # Interactive mode if no arguments provided
     if not font and not google_font and not icon_font:
-        interactive_mode(directory)
+        if no_tui:
+            # Use wizard mode
+            interactive_mode(directory)
+        else:
+            # Use TUI mode (default)
+            run_tui(directory)
         return
 
     # Determine font source
@@ -273,168 +285,237 @@ def main(
 
 
 def interactive_mode(directory: Path = Path('.')):
-    """Run in interactive mode with prompts.
+    """Run in interactive mode with rich interface.
 
     Args:
         directory: Directory to search for fonts
     """
-    ui.console.print()
-    ui.print_header()
+    try:
+        # Discover fonts in directory
+        with ui.show_progress_spinner("Scanning directory...") as progress:
+            task = progress.add_task("Scanning", total=None)
+            discovered_fonts = FontDiscovery.find_fonts_in_directory(str(directory))
+            progress.stop()
 
-    # Discover fonts in current directory
-    print_info(f"Searching for fonts in: {directory.resolve()}")
+        # Show the main interface
+        ui.show_interactive_interface(discovered_fonts, str(directory.resolve()))
 
-    with ui.show_progress_spinner("Scanning directory...") as progress:
-        task = progress.add_task("Scanning", total=None)
-        discovered_fonts = FontDiscovery.find_fonts_in_directory(str(directory))
-        progress.stop()
+        # Start conversion workflow
+        while True:
+            ui.console.print()
+            action = questionary.select(
+                "What would you like to do?",
+                choices=[
+                    questionary.Choice("🔄 Convert a font", "convert"),
+                    questionary.Choice("🔄 Refresh font list", "refresh"),
+                    questionary.Choice("🚪 Exit", "exit"),
+                ]
+            ).ask()
 
-    if discovered_fonts:
-        # Show fonts in a beautiful table
-        ui.show_fonts_table(discovered_fonts[:20], "Found Fonts")
+            if action is None or action == "exit":
+                ui.console.print("\n[dim]Goodbye![/dim]\n")
+                return
 
-        if len(discovered_fonts) > 20:
-            ui.console.print(f"[dim]... and {len(discovered_fonts) - 20} more fonts[/dim]\n")
+            if action == "refresh":
+                # Refresh and show interface again
+                with ui.show_progress_spinner("Scanning directory...") as progress:
+                    task = progress.add_task("Scanning", total=None)
+                    discovered_fonts = FontDiscovery.find_fonts_in_directory(str(directory))
+                    progress.stop()
+                ui.show_interactive_interface(discovered_fonts, str(directory.resolve()))
+                continue
 
-        # Use questionary for better selection UI
-        use_discovered = questionary.confirm(
-            "Use a font from current directory?",
+            if action == "convert":
+                result = font_conversion_wizard_with_preview(directory, discovered_fonts)
+                if result:
+                    # Ask if user wants to continue
+                    ui.console.print()
+                    continue_choice = questionary.confirm(
+                        "Convert another font?",
+                        default=True
+                    ).ask()
+                    if not continue_choice:
+                        ui.console.print("\n[dim]Goodbye![/dim]\n")
+                        return
+                continue
+
+    except KeyboardInterrupt:
+        ui.console.print("\n\n[dim]Cancelled by user[/dim]\n")
+        sys.exit(0)
+
+
+def font_conversion_wizard_with_preview(directory: Path, discovered_fonts: list):
+    """Run font conversion with parameter configuration and preview.
+
+    Args:
+        directory: Directory to search for fonts
+        discovered_fonts: List of discovered fonts
+
+    Returns:
+        True if conversion was successful, False otherwise
+    """
+    try:
+        ui.console.print()
+        ui.console.print("[bold cyan]═══ Font Conversion Wizard ═══[/bold cyan]\n")
+
+        # Step 1: Select font
+        if not discovered_fonts:
+            print_warning("No fonts found in current directory")
+            font_path_str = questionary.path(
+                "Enter font file path:",
+                only_directories=False
+            ).ask()
+            if not font_path_str:
+                return False
+            font_path = Path(font_path_str)
+        else:
+            choices = [
+                questionary.Choice(
+                    title=f"{font.filename} - {font.font_name} ({font.format})",
+                    value=font.path
+                )
+                for font in discovered_fonts
+            ]
+            font_path = questionary.select(
+                "📁 Select a font:",
+                choices=choices
+            ).ask()
+            if not font_path:
+                return False
+
+        # Step 2: Configure parameters
+        ui.console.print()
+        font_size = questionary.select(
+            "📏 Select font size:",
+            choices=[
+                questionary.Choice("8 px", 8),
+                questionary.Choice("12 px", 12),
+                questionary.Choice("16 px (recommended)", 16),
+                questionary.Choice("24 px", 24),
+                questionary.Choice("32 px", 32),
+            ],
+            default=16
+        ).ask()
+        if font_size is None:
+            return False
+
+        ui.console.print()
+        charset_input = questionary.select(
+            "🔤 Select character set:",
+            choices=[
+                questionary.Choice("ascii - Basic ASCII (32-126)", "ascii"),
+                questionary.Choice("extended - Extended ASCII (32-255)", "extended"),
+                questionary.Choice("digits - Numbers 0-9", "digits"),
+            ],
+            default="ascii"
+        ).ask()
+        if charset_input is None:
+            return False
+
+        ui.console.print()
+        output_format = questionary.select(
+            "💾 Select export format:",
+            choices=[
+                questionary.Choice("c-header - C array (Adafruit GFX)", "c-header"),
+                questionary.Choice("xbm - X BitMap (U8g2)", "xbm"),
+                questionary.Choice("bdf - Bitmap Distribution Format", "bdf"),
+                questionary.Choice("python - Python arrays", "python"),
+            ],
+            default="c-header"
+        ).ask()
+        if output_format is None:
+            return False
+
+        # Show parameters summary
+        ui.console.print()
+        params = {
+            'font': Path(font_path).name,
+            'size': f"{font_size} px",
+            'charset': charset_input,
+            'format': output_format
+        }
+        ui.console.print(ui.create_parameters_panel(params))
+
+        # Step 3: Generate preview
+        ui.console.print()
+        show_preview = questionary.confirm(
+            "🔍 Generate preview before conversion?",
             default=True
         ).ask()
 
-        if use_discovered:
-            # Create choices for questionary
-            choices = [
-                questionary.Choice(
-                    title=f"{i}. {font.filename} - {font.font_name}",
-                    value=font.path
-                )
-                for i, font in enumerate(discovered_fonts, 1)
-            ]
+        if show_preview:
+            ui.console.print()
+            print_info("Generating preview...")
 
-            font_path = questionary.select(
-                "Select a font:",
-                choices=choices[:20]  # Limit to 20 for scrolling
-            ).ask()
+            # Load font and generate preview
+            try:
+                loader = FontLoader(str(font_path))
+                loader.validate()
+                font_name = loader.get_font_name()
 
-            if not font_path:
-                print_error("No font selected")
-                return
-        else:
-            # Ask for font file path
-            font_path_str = questionary.path(
-                "Font file path:",
-                only_directories=False
-            ).ask()
+                # Parse charset
+                if charset_input.lower() in Charset.get_all_presets():
+                    char_codes = Charset.get_preset(charset_input.lower())
+                else:
+                    char_codes = Charset.parse_range(charset_input)
 
-            if not font_path_str:
-                print_error("No font path provided")
-                return
+                # Filter to available
+                available = loader.get_available_characters()
+                available_chars = Charset.filter_available(char_codes, available)
 
-            font_path = Path(font_path_str)
-    else:
-        print_warning("No fonts found in current directory")
+                # Rasterize a few sample glyphs for preview
+                sample_chars = list(available_chars)[:5]
+                rasterizer = FontRasterizer(str(font_path), font_size)
+                sample_glyphs = rasterizer.rasterize_charset(sample_chars)
+
+                if sample_glyphs:
+                    ui.console.print()
+                    ui.show_glyphs_comparison(sample_glyphs, max_glyphs=3)
+                else:
+                    print_warning("No glyphs could be generated for preview")
+
+            except Exception as e:
+                print_error(f"Preview failed: {e}")
+                return False
+
+        # Step 4: Confirm and convert
         ui.console.print()
-
-        # Ask for font file path
-        font_path_str = questionary.path(
-            "Font file path:",
-            only_directories=False
+        proceed = questionary.confirm(
+            "✓ Proceed with conversion?",
+            default=True
         ).ask()
 
-        if not font_path_str:
-            print_error("No font path provided")
-            return
+        if not proceed:
+            print_info("Conversion cancelled")
+            return False
 
-        font_path = Path(font_path_str)
-
-    # Step 2: Select font size
-    ui.console.print()
-    font_size = questionary.select(
-        "Select font size:",
-        choices=[
-            questionary.Choice("8 px", 8),
-            questionary.Choice("12 px", 12),
-            questionary.Choice("14 px", 14),
-            questionary.Choice("16 px (recommended)", 16),
-            questionary.Choice("20 px", 20),
-            questionary.Choice("24 px", 24),
-            questionary.Choice("32 px", 32),
-            questionary.Choice("Custom size", "custom"),
-        ],
-        default=16
-    ).ask()
-
-    if font_size == "custom":
-        font_size = questionary.text(
-            "Enter custom font size in pixels:",
-            validate=lambda x: x.isdigit() and int(x) > 0
+        # Get output path
+        default_ext = EXPORT_FORMATS[output_format][0]
+        default_output = f"font_output{default_ext}"
+        output_path_str = questionary.text(
+            "📄 Output file path:",
+            default=default_output
         ).ask()
-        font_size = int(font_size)
+        if not output_path_str:
+            return False
 
-    # Step 3: Select character set
-    ui.console.print()
-    charset_choices = [
-        questionary.Choice(f"ascii - Basic ASCII (32-126)", "ascii"),
-        questionary.Choice(f"extended - Extended ASCII (32-255)", "extended"),
-        questionary.Choice(f"digits - Numbers 0-9", "digits"),
-        questionary.Choice(f"uppercase - A-Z", "uppercase"),
-        questionary.Choice(f"lowercase - a-z", "lowercase"),
-        questionary.Choice(f"custom - Define your own range", "custom"),
-    ]
+        output_path = Path(output_path_str)
 
-    charset_input = questionary.select(
-        "Select character set:",
-        choices=charset_choices,
-        default="ascii"
-    ).ask()
+        # Perform conversion
+        ui.console.print()
+        ui.console.print("[bold cyan]Processing...[/bold cyan]\n")
+        process_font(font_path, font_size, charset_input, output_format, output_path, False)
 
-    if charset_input == "custom":
-        charset_input = questionary.text(
-            "Enter character range (e.g., '32-126,160-255'):",
-            validate=lambda x: len(x) > 0
-        ).ask()
+        return True
 
-    # Step 4: Select output format
-    ui.console.print()
-    format_choices = [
-        questionary.Choice(f"c-header - C array (Adafruit GFX)", "c-header"),
-        questionary.Choice(f"xbm - X BitMap (U8g2)", "xbm"),
-        questionary.Choice(f"bdf - Bitmap Distribution Format", "bdf"),
-        questionary.Choice(f"python - Python arrays (MicroPython)", "python"),
-    ]
+    except KeyboardInterrupt:
+        ui.console.print("\n\n[dim]Cancelled[/dim]\n")
+        return False
+    except Exception as e:
+        print_error(f"Error: {e}")
+        return False
 
-    output_format = questionary.select(
-        "Select export format:",
-        choices=format_choices,
-        default="c-header"
-    ).ask()
 
-    # Step 5: Output file path
-    default_ext = EXPORT_FORMATS[output_format][0]
-    default_output = f"font_output{default_ext}"
-
-    output_path_str = questionary.text(
-        "Output file path:",
-        default=default_output
-    ).ask()
-
-    output_path = Path(output_path_str)
-
-    # Step 6: Preview option
-    preview = questionary.confirm(
-        "Show preview of generated bitmaps?",
-        default=True
-    ).ask()
-
-    ui.console.print()
-    ui.console.print("[bold cyan]Processing...[/bold cyan]\n")
-
-    try:
-        process_font(font_path, font_size, charset_input, output_format, output_path, preview)
-    except (FontLoaderError, CharsetError, RasterizerError, ExporterError) as e:
-        print_error(str(e))
-        sys.exit(1)
 
 
 def process_font(

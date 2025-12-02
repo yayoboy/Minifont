@@ -151,8 +151,8 @@ def show_glyph_preview(glyph: GlyphBitmap, char_on: str = "█", char_off: str =
                 row += f"[dim]{char_off}[/dim]"
 
         lines.append(row)
-        bytes_per_row = (glyph.width + 7) // 8
-        byte_index += bytes_per_row
+        # Use pitch from glyph instead of calculating
+        byte_index += glyph.pitch
 
     preview = "\n".join(lines)
 
@@ -320,3 +320,83 @@ def create_menu_panel(title: str, options: List[str]) -> Panel:
         border_style="yellow",
         box=ROUNDED
     )
+
+
+def create_font_sample_text(font_name: str) -> str:
+    """Create a sample text showing the font name.
+
+    Args:
+        font_name: Name of the font
+
+    Returns:
+        Sample text
+    """
+    # Try to show some characters as preview
+    sample = "AaBbCc 123"
+    return f"[cyan]{font_name}[/cyan]\n[dim]{sample}[/dim]"
+
+
+def create_parameters_panel(params: dict) -> Panel:
+    """Create a panel showing current parameters.
+
+    Args:
+        params: Dictionary of parameters
+
+    Returns:
+        Rich Panel with parameters
+    """
+    table = Table(box=None, show_header=False, padding=(0, 1))
+    table.add_column("Parameter", style="cyan", no_wrap=True)
+    table.add_column("Value", style="yellow")
+
+    param_labels = {
+        'font': '📁 Font',
+        'size': '📏 Size',
+        'charset': '🔤 Charset',
+        'format': '💾 Format',
+        'output': '📄 Output'
+    }
+
+    for key, value in params.items():
+        label = param_labels.get(key, key)
+        table.add_row(label, str(value))
+
+    return Panel(
+        table,
+        title="[bold cyan]⚙️  Parameters[/bold cyan]",
+        border_style="cyan",
+        box=ROUNDED
+    )
+
+
+def show_interactive_interface(fonts: List[FontInfo], directory: str) -> None:
+    """Show the main interactive interface.
+
+    Args:
+        fonts: List of available fonts
+        directory: Directory path
+    """
+    console.clear()
+    print_header()
+
+    # Create fonts table
+    if fonts:
+        show_fonts_table(fonts[:15], f"Fonts in {directory}")
+        if len(fonts) > 15:
+            console.print(f"[dim]... and {len(fonts) - 15} more fonts[/dim]\n")
+    else:
+        console.print("[yellow]⚠[/yellow] No fonts found in current directory\n")
+        console.print("[dim]Place TTF/OTF font files in this directory or specify a different path[/dim]\n")
+
+    # Show controls
+    controls = Panel(
+        "[cyan]Controls:[/cyan]\n"
+        "  • [green]↑/↓[/green] Navigate options\n"
+        "  • [green]Enter[/green] Select\n"
+        "  • [green]Esc[/green] Cancel/Back\n"
+        "  • [green]Ctrl+C[/green] Exit",
+        title="[bold yellow]ℹ️  How to Use[/bold yellow]",
+        border_style="yellow",
+        box=ROUNDED
+    )
+    console.print(controls)
