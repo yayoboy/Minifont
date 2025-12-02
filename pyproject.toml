@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "minifont"
-version = "0.1.0"
-description = "CLI tool to convert fonts to 1-bit bitmaps for Arduino and embedded projects"
+version = "0.2.0"
+description = "CLI tool to convert fonts to 1-bit bitmaps for Arduino and embedded projects. Supports Google Fonts and icon fonts."
 readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "MIT"}
@@ -31,6 +31,7 @@ dependencies = [
     "freetype-py>=2.4.0",
     "Pillow>=10.0.0",
     "click>=8.1.0",
+    "requests>=2.31.0",
 ]
 
 [project.optional-dependencies]

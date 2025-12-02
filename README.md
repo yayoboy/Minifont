@@ -5,12 +5,13 @@ A Python CLI tool to convert TTF/OTF/Webfont fonts to 1-bit bitmaps for Arduino 
 ## Features
 
 - 🔤 Support for TTF, OTF, and WOFF/WOFF2 fonts
+- 🌐 **Google Fonts integration** - Download fonts directly from Google Fonts
+- 🎯 **Icon fonts support** - Material Icons and Font Awesome with preset collections
 - 📊 Multiple export formats:
   - C header arrays (Adafruit GFX compatible)
   - XBM format (U8g2 compatible)
   - BDF bitmap fonts
   - Python byte arrays (MicroPython)
-  - PNG preview
 - 🎨 Customizable character sets (ASCII, extended, Unicode ranges)
 - 📐 Multiple font sizes (8, 12, 16, 24 px and custom)
 - 🖥️ Interactive CLI interface
@@ -49,6 +50,27 @@ minifont --font myfont.ttf --size 16 --charset ascii --format c-header --output 
 minifont --font Arial.ttf --size 16 --charset ascii --format c-header --output arial16.h
 ```
 
+### Download and convert Google Fonts
+```bash
+# Download Roboto from Google Fonts
+minifont --google-font "Roboto" --size 16 --charset ascii --format c-header --output roboto16.h
+
+# With specific variant
+minifont --google-font "Open Sans" --google-variant bold --size 20 --charset ascii --format xbm
+```
+
+### Convert icon fonts
+```bash
+# Material Icons with preset
+minifont --icon-font material --icons navigation --size 24 --format c-header
+
+# Font Awesome with specific icons
+minifont --icon-font fontawesome --icons "home,user,heart,star" --size 32 --format c-header
+
+# Material Icons custom selection
+minifont --icon-font material --icons "home,menu,search,settings" --size 24 --format xbm
+```
+
 ### Generate XBM for U8g2
 ```bash
 minifont --font Roboto.ttf --size 12 --charset "32-126" --format xbm --output roboto12.xbm
@@ -63,7 +85,24 @@ minifont --font myfont.ttf --size 16 --charset "32-90,160-255" --format c-header
 
 - `ascii`: Basic ASCII (32-126)
 - `extended`: Extended ASCII (32-255)
+- `digits`: Numbers 0-9
+- `uppercase`: A-Z
+- `lowercase`: a-z
 - `custom`: Define your own range (e.g., "32-126,160-180")
+
+## Icon Font Presets
+
+- `navigation`: home, menu, arrows, close
+- `actions`: add, remove, edit, delete, save, search
+- `media`: play, pause, stop, volume controls
+- `communication`: mail, phone, share
+- `alerts`: info, warning, error, check
+- `common`: frequently used icons
+
+List all available icons:
+```bash
+minifont --list-icon-presets
+```
 
 ## Export Formats
 
@@ -80,6 +119,20 @@ minifont --font myfont.ttf --size 16 --charset "32-90,160-255" --format c-header
 - freetype-py
 - Pillow
 - click
+- requests (for Google Fonts)
+
+## Additional Resources
+
+### Google Fonts
+- Browse fonts: https://fonts.google.com/
+- List popular fonts: `minifont --list-google-fonts`
+
+### Icon Fonts
+- Material Icons: https://fonts.google.com/icons
+- Font Awesome: https://fontawesome.com/
+- List supported: `minifont --list-icon-fonts`
+
+**Note:** Icon font files must be downloaded separately and provided when converting icons.
 
 ## License
 
